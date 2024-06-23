@@ -1,24 +1,20 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
-import joblib
 import random
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 import traceback
+from contextlib import asynccontextmanager
 
 app = FastAPI()
 
-# Load the trained model
-try:
-    rf_classifier = joblib.load('model.pkl')
-    print('Model loaded successfully')
-    X_encoded = pd.get_dummies(pd.DataFrame(columns=rf_classifier.feature_names_in_))
-    # Load the data for filtering
-    data = pd.read_csv('Exercises.csv')
-    print('Data loaded successfully')
-except Exception as e:
-    print(f"Error loading model or data: {e}")
-    traceback.print_exc()  # Print the full traceback for debugging
+# Global variables for the model and data
+rf_classifier = None
+data = None
+X_encoded = None
 
+# Define the data model for the user input
 class UserInput(BaseModel):
     age: int
     height: float
@@ -28,8 +24,44 @@ class UserInput(BaseModel):
     level: str
     equipment: str
 
+# Define the data model for the exercise recommendation
 class ExerciseRecommendation(BaseModel):
     exercise: str
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global rf_classifier, data, X_encoded
+    try:
+        # Load your data
+        data = pd.read_csv('Exercises.csv')
+        data['gender_encoded'] = data['Gender'].map({'male': 0, 'female': 1})
+
+        # Prepare the features and target variable
+        X = data[['Age', 'Height', 'Weight', 'injury', 'gender_encoded']]
+        y = data['Exercise']
+
+        # Encode categorical features
+        X_encoded = pd.get_dummies(X, columns=['injury'])
+
+        # Split the data into training and test sets
+        X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
+
+        # Train the RandomForestClassifier
+        rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+        rf_classifier.fit(X_train, y_train)
+
+        print("Model and data loaded successfully")
+        
+        yield
+    except Exception as e:
+        print(f"Error loading model or data: {e}")
+        traceback.print_exc()
+        yield
+    finally:
+        # You can perform any necessary cleanup here
+        print("Cleaning up resources...")
+
+app.router.lifespan_context = lifespan
 
 # Function to predict exercise
 def predict_exercise(model, user_input, X_encoded):
