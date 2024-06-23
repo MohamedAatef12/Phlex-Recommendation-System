@@ -6,6 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import traceback
 from contextlib import asynccontextmanager
+from typing import List
 
 app = FastAPI()
 
@@ -26,7 +27,7 @@ class UserInput(BaseModel):
 
 # Define the data model for the exercise recommendation
 class ExerciseRecommendation(BaseModel):
-    exercise: str
+    exercises: List[str]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -187,7 +188,7 @@ def recommend_exercise(user_input: UserInput):
         # Get exercise recommendation
         recommended_exercises = get_exercise_recommendation(user_input_dict, rf_classifier, data, X_encoded)
         
-        return ExerciseRecommendation(exercise=", ".join(recommended_exercises))
+        return ExerciseRecommendation(exercises=recommended_exercises)
     except Exception as e:
         print(f"Error during prediction: {e}")
         traceback.print_exc()
