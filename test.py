@@ -3,19 +3,21 @@ from pydantic import BaseModel
 import pandas as pd
 import joblib
 import random
+import traceback
 
 app = FastAPI()
 
 # Load the trained model
 try:
     rf_classifier = joblib.load('model.pkl')
-
-    print('model loaded111111111111')
+    print('Model loaded successfully')
     X_encoded = pd.get_dummies(pd.DataFrame(columns=rf_classifier.feature_names_in_))
     # Load the data for filtering
     data = pd.read_csv('Exercises.csv')
+    print('Data loaded successfully')
 except Exception as e:
     print(f"Error loading model or data: {e}")
+    traceback.print_exc()  # Print the full traceback for debugging
 
 class UserInput(BaseModel):
     age: int
@@ -31,95 +33,110 @@ class ExerciseRecommendation(BaseModel):
 
 # Function to predict exercise
 def predict_exercise(model, user_input, X_encoded):
-    # Prepare the user input for prediction
-    user_input['gender_encoded'] = 1 if user_input['gender'].lower() == 'female' else 0
-    user_input_df = pd.DataFrame([user_input])
-    user_input_encoded = pd.get_dummies(user_input_df, columns=['injury'])
-    user_input_encoded = user_input_encoded.reindex(columns=X_encoded.columns, fill_value=0)
-    
-    # Predict exercise
-    predicted_exercise = model.predict(user_input_encoded)[0]
-    return predicted_exercise
+    try:
+        # Prepare the user input for prediction
+        user_input['gender_encoded'] = 1 if user_input['gender'].lower() == 'female' else 0
+        user_input_df = pd.DataFrame([user_input])
+        user_input_encoded = pd.get_dummies(user_input_df, columns=['injury'])
+        user_input_encoded = user_input_encoded.reindex(columns=X_encoded.columns, fill_value=0)
+        
+        # Predict exercise
+        predicted_exercise = model.predict(user_input_encoded)[0]
+        return predicted_exercise
+    except Exception as e:
+        print(f"Error in prediction: {e}")
+        traceback.print_exc()
+        raise
 
 # Function to filter exercises based on user specifications
 def filter_exercises(data, injury, equipment, level):
-    # Adjust equipment filter
-    if equipment.lower() == 'dumbbells':
-        equipment_filter = ['Dumbbells', 'Body Only']
-    else:
-        equipment_filter = [equipment.lower()]
-    
-    # Adjust level filter
-    if level.lower() == 'beginner':
-        level_filter = ['Beginner']
-    elif level.lower() == 'intermediate':
-        level_filter = ['Beginner', 'Intermediate']
-    elif level.lower() == 'advanced':
-        level_filter = ['Beginner', 'Intermediate', 'Advanced']
-    else:
-        level_filter = [level.lower()]
-    
-    filtered_df = data[(data['injury'] == injury) & (data['equipment'].str.lower().isin(equipment_filter)) & (data['level'].str.lower().isin(level_filter))]
-    return filtered_df
+    try:
+        # Adjust equipment filter
+        if equipment.lower() == 'dumbbells':
+            equipment_filter = ['Dumbbells', 'Body Only']
+        else:
+            equipment_filter = [equipment.lower()]
+        
+        # Adjust level filter
+        if level.lower() == 'beginner':
+            level_filter = ['Beginner']
+        elif level.lower() == 'intermediate':
+            level_filter = ['Beginner', 'Intermediate']
+        elif level.lower() == 'advanced':
+            level_filter = ['Beginner', 'Intermediate', 'Advanced']
+        else:
+            level_filter = [level.lower()]
+        
+        filtered_df = data[(data['injury'] == injury) & (data['equipment'].str.lower().isin(equipment_filter)) & (data['level'].str.lower().isin(level_filter))]
+        return filtered_df
+    except Exception as e:
+        print(f"Error in filtering exercises: {e}")
+        traceback.print_exc()
+        raise
 
 # Main function to get recommendation
 def get_exercise_recommendation(user_input, model, data, X_encoded, n=3):
-    predicted_exercise = predict_exercise(model, user_input, X_encoded)
-    
-    # Check if the predicted exercise matches the user's specifications
-    predicted_exercise_row = data[data['Exercise'] == predicted_exercise]
-    
-    if not predicted_exercise_row.empty:
-        predicted_exercise_matches = (
-            (predicted_exercise_row['equipment'].values[0].lower() in ['dumbbells', 'body only']) if user_input['equipment'].lower() == 'dumbbells' else (predicted_exercise_row['equipment'].values[0].lower() == user_input['equipment'].lower()) and
-            (predicted_exercise_row['level'].values[0].lower() in ['beginner', 'intermediate', 'advanced']) if user_input['level'].lower() == 'advanced' else (predicted_exercise_row['level'].values[0].lower() in ['beginner', 'intermediate']) if user_input['level'].lower() == 'intermediate' else (predicted_exercise_row['level'].values[0].lower() == user_input['level'].lower())
-        )
+    try:
+        predicted_exercise = predict_exercise(model, user_input, X_encoded)
         
-        if predicted_exercise_matches:
-            initial_recommendations = [predicted_exercise]
+        # Check if the predicted exercise matches the user's specifications
+        predicted_exercise_row = data[data['Exercise'] == predicted_exercise]
+        
+        if not predicted_exercise_row.empty:
+            predicted_exercise_matches = (
+                (predicted_exercise_row['equipment'].values[0].lower() in ['dumbbells', 'body only']) if user_input['equipment'].lower() == 'dumbbells' else (predicted_exercise_row['equipment'].values[0].lower() == user_input['equipment'].lower()) and
+                (predicted_exercise_row['level'].values[0].lower() in ['beginner', 'intermediate', 'advanced']) if user_input['level'].lower() == 'advanced' else (predicted_exercise_row['level'].values[0].lower() in ['beginner', 'intermediate']) if user_input['level'].lower() == 'intermediate' else (predicted_exercise_row['level'].values[0].lower() == user_input['level'].lower())
+            )
+            
+            if predicted_exercise_matches:
+                initial_recommendations = [predicted_exercise]
+            else:
+                initial_recommendations = []
         else:
             initial_recommendations = []
-    else:
-        initial_recommendations = []
-    
-    # Filter exercises based on user's injury, equipment, and level
-    filtered_exercises = filter_exercises(data, user_input['injury'], user_input['equipment'], user_input['level'])
-    
-    # Get unique exercises from the filtered list
-    unique_exercises = list(filtered_exercises['Exercise'].unique())
-    
-    # Initialize recommendations with predicted exercise if it matches the criteria
-    recommendations = list(set(initial_recommendations))
-    
-    # Add additional unique exercises to meet the required number
-    for exercise in unique_exercises:
-        if exercise not in recommendations:
-            recommendations.append(exercise)
-        if len(recommendations) >= n:
-            break
-    
-    # If there are not enough unique recommendations, randomly sample more from the filtered list
-    if len(recommendations) < n:
-        remaining_exercises = list(filtered_exercises['Exercise'])
-        random.shuffle(remaining_exercises)
-        for exercise in remaining_exercises:
+        
+        # Filter exercises based on user's injury, equipment, and level
+        filtered_exercises = filter_exercises(data, user_input['injury'], user_input['equipment'], user_input['level'])
+        
+        # Get unique exercises from the filtered list
+        unique_exercises = list(filtered_exercises['Exercise'].unique())
+        
+        # Initialize recommendations with predicted exercise if it matches the criteria
+        recommendations = list(set(initial_recommendations))
+        
+        # Add additional unique exercises to meet the required number
+        for exercise in unique_exercises:
             if exercise not in recommendations:
                 recommendations.append(exercise)
             if len(recommendations) >= n:
                 break
-    
-    # If we still don't have enough exercises, expand the search criteria
-    if len(recommendations) < n:
-        # Fallback: Get random exercises from the same injury category
-        fallback_exercises = data[data['injury'] == user_input['injury']]['Exercise'].unique()
-        random.shuffle(fallback_exercises)
-        for exercise in fallback_exercises:
-            if exercise not in recommendations:
-                recommendations.append(exercise)
-            if len(recommendations) >= n:
-                break
+        
+        # If there are not enough unique recommendations, randomly sample more from the filtered list
+        if len(recommendations) < n:
+            remaining_exercises = list(filtered_exercises['Exercise'])
+            random.shuffle(remaining_exercises)
+            for exercise in remaining_exercises:
+                if exercise not in recommendations:
+                    recommendations.append(exercise)
+                if len(recommendations) >= n:
+                    break
+        
+        # If we still don't have enough exercises, expand the search criteria
+        if len(recommendations) < n:
+            # Fallback: Get random exercises from the same injury category
+            fallback_exercises = data[data['injury'] == user_input['injury']]['Exercise'].unique()
+            random.shuffle(fallback_exercises)
+            for exercise in fallback_exercises:
+                if exercise not in recommendations:
+                    recommendations.append(exercise)
+                if len(recommendations) >= n:
+                    break
 
-    return recommendations[:n]
+        return recommendations[:n]
+    except Exception as e:
+        print(f"Error in getting exercise recommendation: {e}")
+        traceback.print_exc()
+        raise
 
 @app.post("/recommend", response_model=ExerciseRecommendation)
 def recommend_exercise(user_input: UserInput):
@@ -141,6 +158,7 @@ def recommend_exercise(user_input: UserInput):
         return ExerciseRecommendation(exercise=", ".join(recommended_exercises))
     except Exception as e:
         print(f"Error during prediction: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":
