@@ -9,7 +9,8 @@ app = FastAPI()
 # Load the trained model
 try:
     rf_classifier = joblib.load('model.pkl')
-    print('model loaded')
+
+    print('model loaded111111111111')
     X_encoded = pd.get_dummies(pd.DataFrame(columns=rf_classifier.feature_names_in_))
     # Load the data for filtering
     data = pd.read_csv('Exercises.csv')
