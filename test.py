@@ -81,34 +81,8 @@ def predict_exercise(model, user_input, X_encoded):
         traceback.print_exc()
         raise
 
-# Function to filter exercises based on user specifications
-def filter_exercises(data, injury, equipment, level):
-    try:
-        # Adjust equipment filter
-        if equipment.lower() == 'dumbbells':
-            equipment_filter = ['Dumbbells', 'Body Only']
-        else:
-            equipment_filter = [equipment.lower()]
-        
-        # Adjust level filter
-        if level.lower() == 'beginner':
-            level_filter = ['Beginner']
-        elif level.lower() == 'intermediate':
-            level_filter = ['Beginner', 'Intermediate']
-        elif level.lower() == 'advanced':
-            level_filter = ['Beginner', 'Intermediate', 'Advanced']
-        else:
-            level_filter = [level.lower()]
-        
-        filtered_df = data[(data['injury'] == injury) & (data['equipment'].str.lower().isin(equipment_filter)) & (data['level'].str.lower().isin(level_filter))]
-        return filtered_df
-    except Exception as e:
-        print(f"Error in filtering exercises: {e}")
-        traceback.print_exc()
-        raise
-
 # Main function to get recommendation
-def get_exercise_recommendation(user_input, model, data, X_encoded, n=10):
+def get_exercise_recommendation(user_input, model, data, X_encoded, n=3):
     try:
         predicted_exercise = predict_exercise(model, user_input, X_encoded)
         
@@ -128,8 +102,12 @@ def get_exercise_recommendation(user_input, model, data, X_encoded, n=10):
         else:
             initial_recommendations = []
         
-        # Filter exercises based on user's injury, equipment, and level
-        filtered_exercises = filter_exercises(data, user_input['injury'], user_input['equipment'], user_input['level'])
+        # Filter exercises based on user's injury and level
+        filtered_exercises = data[(data['injury'].str.lower() == user_input['injury'].lower()) & (data['level'].str.lower() == user_input['level'].lower())]
+        
+        # Filter exercises further based on user's equipment (if specified as 'body only')
+        if user_input['equipment'].lower() == 'body only':
+            filtered_exercises = filtered_exercises[filtered_exercises['equipment'].str.lower() == 'body only']
         
         # Get unique exercises from the filtered list
         unique_exercises = list(filtered_exercises['Exercise'].unique())
@@ -154,10 +132,9 @@ def get_exercise_recommendation(user_input, model, data, X_encoded, n=10):
                 if len(recommendations) >= n:
                     break
         
-        # If we still don't have enough exercises, expand the search criteria
+        # Fallback to randomly sample from injury category if needed
         if len(recommendations) < n:
-            # Fallback: Get random exercises from the same injury category
-            fallback_exercises = data[data['injury'] == user_input['injury']]['Exercise'].unique()
+            fallback_exercises = data[data['injury'].str.lower() == user_input['injury'].lower()]['Exercise'].unique()
             random.shuffle(fallback_exercises)
             for exercise in fallback_exercises:
                 if exercise not in recommendations:
