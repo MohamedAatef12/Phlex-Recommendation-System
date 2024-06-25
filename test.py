@@ -82,7 +82,7 @@ def predict_exercise(model, user_input, X_encoded):
         raise
 
 # Main function to get recommendation
-def get_exercise_recommendation(user_input, model, data, X_encoded, n=3):
+def get_exercise_recommendation(user_input, model, data, X_encoded, n=5):
     try:
         predicted_exercise = predict_exercise(model, user_input, X_encoded)
         
